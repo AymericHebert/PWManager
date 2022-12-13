@@ -5,14 +5,6 @@ from rich import print as printc
 
 
 
-config = {
-    'user' : 'pwm',
-    'password' : 'CqWyByt5wuPNPQZ',
-    'host' : 'localhost',
-    'raise_on_warnings' : True
-}
-
-
 console = Console()
 
 
