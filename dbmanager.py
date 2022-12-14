@@ -191,7 +191,7 @@ class DBManager(object):
             else: return columns_names
 
 
-    def insert(self, table_name: str, columns: list, values: list) -> int:
+    def insert(self, table_name: str, columns: list, values: list) -> None:
         ''' Insert an entry into the database. '''
         
         # check if columns and values are the same length
@@ -227,8 +227,76 @@ class DBManager(object):
                 conn.close()
         
 
+    def retrieve(self, table_name:str, columns_to_retrieve: list = [], where_conditions: list = [], order_statements: list=[]) -> list:
+        ''' Retrieve all entries from the database that match the given parameters. '''
+        
+        # make columns string for sql statement
+        if len(columns_to_retrieve) > 0:
+            columns_str = ''
+            for column in columns_to_retrieve:
+                columns_str = "".join([columns_str, column + ', '])
+            columns_str = columns_str[:-2]
+        
+        else: columns_str = "*"
+        
+        # make conditions string for sql statement
+        if len(where_conditions) > 0:
+            where_conditions_str = 'WHERE '
+            for condition in where_conditions:
+                where_conditions_str = "".join([where_conditions_str, condition + ', '])
+            where_conditions_str = where_conditions_str[:-2]
+        
+        else: where_conditions_str = ''
+
+        if len(order_statements) > 0:
+            order_statements_str = 'ORDER BY '
+            for order_statement in order_statements:
+                order_statements_str = "".join([order_statements_str, order_statement + ', '])
+            order_statements_str = order_statements_str[:-2]
+        
+        else: order_statements_str = ''
+
+        sql = """ SELECT %s FROM %s.%s %s %s"""%(columns_str, self.db_name, table_name, where_conditions_str, order_statements_str)
+
+        conn, rows = None, None
+        try:
+            conn = self.__connect()
+            cursor = conn.cursor()
+            cursor.execute(sql)
+            rows = cursor.fetchall()
+            cursor.close()
+        except (Exception, mysql.connector.DatabaseError) as error:
+            print(error)
+        finally:
+            if conn is not None:
+                conn.close()
+            return rows
+
+
+    def update(self, table_name: str, columns: list, values: list, where_conditions: list):
+        # check if columns and values are the same length
+        if len(columns) != len(values): raise Exception("A value must be given for each column.")
+        
+        # make conditions string for sql statement
+        where_conditions_str = 'WHERE '
+        for condition in where_conditions:
+            where_conditions_str = "".join([where_conditions_str, condition + ', '])
+        where_conditions_str = where_conditions_str[:-2]
+        
+        set_str = 'SET '
+        for column, value in columns, values:
+            set_str = "".join([set_str, column + " = " + value + ', '])
+        set_str = set_str[:-2]
+
+        print(set_str)
+
+        pass
+
 start = time.time()
 config = get_config()
 db = DBManager(db_name="pwm", config=config)
+db.update(table_name='entries', columns=['email', 'username'], values=['johndoe@xyz.gg', 'John Doe'], where_conditions=['password_id = 1'])
+rows = db.retrieve(table_name='entries')
+print(rows)
 end = time.time()
 print ('Total time: ' + time.strftime("%H:%M:%S", time.gmtime(end - start)))
