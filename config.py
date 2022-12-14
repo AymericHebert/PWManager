@@ -2,7 +2,6 @@ import sys
 import string
 import random
 import hashlib
-import os
 import argparse 
 from getpass import getpass
 
@@ -10,30 +9,26 @@ from rich import print as printc
 from rich.console import Console 
 from dotenv import dotenv_values
 
-from test import DBManager
+from dbmanager import DBManager
+from configloader import get_config
 
 
 
-# parser = argparse.ArgumentParser()
-# parser.add_argument('option', help='make / delete / remake')
-# args = parser.parse_args()
 
-dotenv_path = os.path.join(os.path.dirname(__file__), ".env")
-config = dotenv_values('.env')
-print(config)
-
-config = {
-     **config,
-     'raise_on_warnings' : True
-}
+parser = argparse.ArgumentParser()
+parser.add_argument('option', help='make / delete / remake')
+args = parser.parse_args()
 
 console = Console()
+
+# create DB manager
+config = get_config()
 db = DBManager(db_name='pwm', config=config)
 
 
 def generate_device_secret(length=10) -> str:
     """ Generate a random device secret. """
-    device_secret = ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
+    device_secret = ''.join(random.choices(string.ascii_uppercase + string.digits + string.ascii_lowercase, k=length))
     return device_secret
 
 
@@ -46,47 +41,16 @@ def make() -> None:
 
     printc("[green][+] Creating new config")
 
-
     # Create database
-    db = dbmanager.connect()
-    cursor = db.cursor()
-
-    try:
-        cursor.execute("CREATE DATABASE pwm;")
-    except Exception as error:
-        console.print_exception()
-        printc("[red][!] An error occurred while trying to create db. Check if database with name 'pwm' already exists - if it does, delete it and try again.")
-        sys.exit(0)
-
+    db.create_db()
     printc("[green][+][/green] Database 'pwm' created!")
 
-
     # Create tables
-    queries = (
-        """
-            CREATE TABLE pwm.secrets (
-                masterkey_hash TEXT NOT NULL, 
-                device_secret TEXT NOT NULL
-            );
-        """,
-        """
-            CREATE TABLE pwm.entries (
-                password_id SERIAL PRIMARY KEY,
-                application_name TEXT NOT NULL,
-                url TEXT,
-                email TEXT,
-                username TEXT,
-                password TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                update_at TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-        );
-        """
-    )
+    db.create_table("secrets", ["masterkey_hash TEXT NOT NULL", "device_secret TEXT NOT NULL"])
+    printc("[green][+][/green] Table secrets created.")
 
-    for query in queries:
-        cursor.execute(query)
-
-    printc("[green][+][/green] Tables created.")
+    db.create_table("entries", ["password_id SERIAL PRIMARY KEY", "application_name TEXT NOT NULL", "url TEXT", "email TEXT", "username TEXT", "password TEXT", "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP", "update_at TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"])
+    printc("[green][+][/green] Table entries created.")
 
     master_password = ""
     printc("[green][+] A [bold]MASTER PASSWORD[/bold] is the only password you will need to remember in-order to access all your other passwords. Choosing a strong [bold]MASTER PASSWORD[/bold] is essential because all your other passwords will be [bold]encrypted[/bold] with a key that is derived from your [bold]MASTER PASSWORD[/bold]. Therefore, please choose a strong one that has upper and lower case characters, numbers and also special characters. Remember your [bold]MASTER PASSWORD[/bold] because it won't be stored anywhere by this program, and you also cannot change it once chosen.\n")
@@ -101,26 +65,15 @@ def make() -> None:
     hashed_master_password = hashlib.sha256(master_password.encode()).hexdigest()
     printc("[green][+][/green] Generated hash of MASTER PASSWORD.")
 
-
     # Generate a device secret
     device_secret = generate_device_secret()
     printc("[green][+][/green] Device Secret generated.")
 
     # Add them to db
-    query = """
-        INSERT INTO pwm.secrets (
-            masterkey_hash, 
-            device_secret) 
-            values (%s, %s) 
-        """
-    cursor.execute(query, (hashed_master_password, device_secret))
-    db.commit()
+    db.insert(table_name='secrets', columns=["masterkey_hash", "device_secret"], values=[hashed_master_password, device_secret])
 
     printc("[green][+][/green] Added to the database.")
-
     printc("[green][+] Configuration done!")
-
-    db.close()
 
 
 def delete() -> None:
@@ -141,16 +94,11 @@ def delete() -> None:
     printc("[green][-][/green] Deleting config")
 
 
-    if not db_exists():
+    if not db.db_exists():
         printc("[yellow][-][/yellow] No configuration exists to delete!")
         return
 
-    db = dbmanager.connect()
-    cursor = db.cursor()
-    query = "DROP DATABASE pwm"
-    cursor.execute(query)
-    db.commit()
-    db.close()
+    db.delete_db()
     printc("[green][+] Config deleted!")
 
 
@@ -163,15 +111,14 @@ def remake() -> None:
 
 
 if __name__ == "__main__":
-
-    make()
-	# if args.option == "make":
-	# 	make()
-	# elif args.option == "delete":
-	# 	delete()
-	# elif args.option == "remake":
-	# 	remake()
-	# else:
-	# 	print("Usage: python config.py <make/delete/remake>")
+    	
+    if args.option == "make":
+        make()
+    elif args.option == "delete":
+        delete()
+    elif args.option == "remake":
+        remake()
+    else:
+        print("Usage: python config.py <make/delete/remake>")
 
 
